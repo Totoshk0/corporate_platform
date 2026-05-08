@@ -1,0 +1,77 @@
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
+from sqlalchemy import text
+import models
+import schemas
+from database import engine, get_db
+from embeddings import embedding_service
+
+app = FastAPI(title="Corporate Knowledge Hub API")
+
+@app.on_event("startup")
+async def startup_event():
+    with engine.connect() as conn:
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        conn.commit()
+    models.Base.metadata.create_all(bind=engine)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.get("/")
+async def root():
+    return {"message": "Welcome to Corporate Knowledge Hub API"}
+
+@app.get("/health")
+async def health_check(db: Session = Depends(get_db)):
+    try:
+        db.execute(text("SELECT 1"))
+        return {"status": "healthy", "db": "connected"}
+    except Exception as e:
+        return {"status": "unhealthy", "error": str(e)}
+
+# --- Knowledge Base Endpoints ---
+
+@app.post("/kb/items", response_model=schemas.KBItem)
+async def create_kb_item(item: schemas.KBItemCreate, db: Session = Depends(get_db)):
+    embedding = embedding_service.generate_embedding(item.content)
+
+    db_item = models.KnowledgeBaseItem(
+        title=item.title,
+        content=item.content,
+        embedding=embedding
+    )
+    db.add(db_item)
+    db.commit()
+    db.refresh(db_item)
+    return db_item
+
+@app.post("/kb/search")
+async def search_kb(query: schemas.SearchQuery, db: Session = Depends(get_db)):
+
+    query_embedding = embedding_service.generate_embedding(query.query)
+
+    # Семантический поиск с использованием косинусного расстояния
+    # Мы выбираем сам объект и вычисляем расстояние до него
+    results = db.query(
+        models.KnowledgeBaseItem,
+        models.KnowledgeBaseItem.embedding.cosine_distance(query_embedding).label("distance")
+    ).order_by(
+        text("distance")
+    ).limit(query.limit).all()
+
+    return [
+        {
+            "id": item.id,
+            "title": item.title,
+            "content": item.content,
+            "created_at": item.created_at,
+            "distance": float(distance)
+        } for item, distance in results
+    ]

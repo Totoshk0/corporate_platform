@@ -28,12 +28,12 @@ logs:
 	docker logs -f $(PROJECT_NAME)_backend
 
 ## Статус контейнеров
-ps: ## Статус контейнеров
+ps:
 	docker-compose -p $(PROJECT_NAME) ps
 
-## Запустить тесты ядра системы
+## Запустить тесты
 test:
-	docker exec $(PROJECT_NAME)_backend pytest tests/test_core.py
+	docker exec $(PROJECT_NAME)_backend pytest tests/
 
 ## Полная очистка
 clean:

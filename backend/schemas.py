@@ -2,7 +2,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
 
-class Position(BaseModel):
+class CompanyRole(BaseModel):
     id: int
     title: str
     level: str
@@ -13,18 +13,28 @@ class Position(BaseModel):
 class UserBase(BaseModel):
     username: str
     email: str
-    role: str
 
 class UserCreate(UserBase):
     password: str
-    position_id: Optional[int] = None
 
 class User(UserBase):
     id: int
-    position: Optional[Position] = None
+    system_role: str
+    company_role: Optional[CompanyRole] = None
 
     class Config:
         from_attributes = True
+
+class UserUpdateRole(BaseModel):
+    system_role: Optional[str] = None
+    role_id: Optional[int] = None
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    username: Optional[str] = None
 
 class KBItemBase(BaseModel):
     title: str

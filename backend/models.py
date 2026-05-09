@@ -9,8 +9,8 @@ class UserRole(str, enum.Enum):
     ADMIN = "admin"
     USER = "user"
 
-class UserPosition(Base):
-    __tablename__ = "positions"
+class CompanyRole(Base):
+    __tablename__ = "company_roles"
 
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, unique=True, index=True)
@@ -24,11 +24,10 @@ class User(Base):
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
 
-    role = Column(Enum(UserRole), default=UserRole.USER)
-    position_id = Column(Integer, ForeignKey("positions.id"))
+    system_role = Column(Enum(UserRole), default=UserRole.USER)
+    role_id = Column(Integer, ForeignKey("company_roles.id"), nullable=True)
 
-    position = relationship("UserPosition")
-
+    company_role = relationship("CompanyRole")
 class Message(Base):
     __tablename__ = "messages"
 

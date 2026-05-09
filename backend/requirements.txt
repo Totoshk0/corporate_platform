@@ -6,7 +6,7 @@ pgvector
 pydantic
 pydantic-settings
 python-jose[cryptography]
-passlib[bcrypt]
+bcrypt
 python-multipart
 langchain
 sentence-transformers
@@ -14,3 +14,7 @@ python-dotenv
 websockets
 pytest
 requests
+
+pypdf
+python-docx
+openpyxl

@@ -28,10 +28,14 @@ logs:
 	docker logs -f $(PROJECT_NAME)_backend
 
 ## Статус контейнеров
-ps:
+ps: ## Статус контейнеров
 	docker-compose -p $(PROJECT_NAME) ps
 
-## Полная очистка: удалить контейнеры, образы и volumes
+## Запустить тесты ядра системы
+test:
+	docker exec $(PROJECT_NAME)_backend pytest tests/test_core.py
+
+## Полная очистка
 clean:
 	docker-compose -p $(PROJECT_NAME) down -v --rmi all
 	rm -rf data/postgres

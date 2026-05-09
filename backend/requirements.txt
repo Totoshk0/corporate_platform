@@ -12,3 +12,5 @@ langchain
 sentence-transformers
 python-dotenv
 websockets
+pytest
+requests

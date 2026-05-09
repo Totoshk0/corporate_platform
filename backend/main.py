@@ -2,9 +2,10 @@ from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+from typing import List
 import models
 import schemas
-from database import engine, get_db
+from database import engine, get_db, SessionLocal
 from embeddings import embedding_service
 
 app = FastAPI(title="Corporate Knowledge Hub API")
@@ -15,6 +16,24 @@ async def startup_event():
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         conn.commit()
     models.Base.metadata.create_all(bind=engine)
+    with SessionLocal() as db:
+        if db.query(models.UserPosition).count() == 0:
+            positions = [
+                # Высший уровень
+                models.UserPosition(title="CEO", level="TOP"),
+                models.UserPosition(title="CTO", level="TOP"),
+                models.UserPosition(title="CFO", level="TOP"),
+                # Средний уровень
+                models.UserPosition(title="Head of Department", level="MIDDLE"),
+                models.UserPosition(title="Team Lead", level="MIDDLE"),
+                models.UserPosition(title="Project Manager", level="MIDDLE"),
+                # Нижний уровень
+                models.UserPosition(title="Specialist", level="LOWER"),
+                models.UserPosition(title="Assistant", level="LOWER"),
+                models.UserPosition(title="Junior Specialist", level="LOWER"),
+            ]
+            db.add_all(positions)
+            db.commit()
 
 app.add_middleware(
     CORSMiddleware,
@@ -35,6 +54,10 @@ async def health_check(db: Session = Depends(get_db)):
         return {"status": "healthy", "db": "connected"}
     except Exception as e:
         return {"status": "unhealthy", "error": str(e)}
+
+@app.get("/positions", response_model=List[schemas.Position])
+async def get_positions(db: Session = Depends(get_db)):
+    return db.query(models.UserPosition).all()
 
 # --- Knowledge Base Endpoints ---
 

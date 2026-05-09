@@ -1,8 +1,20 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime
+import enum
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Enum
 from sqlalchemy.orm import relationship
 from pgvector.sqlalchemy import Vector
 from database import Base
 import datetime
+
+class UserRole(str, enum.Enum):
+    ADMIN = "admin"
+    USER = "user"
+
+class UserPosition(Base):
+    __tablename__ = "positions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, unique=True, index=True)
+    level = Column(String) # 'TOP', 'MIDDLE', 'LOWER'
 
 class User(Base):
     __tablename__ = "users"
@@ -11,6 +23,11 @@ class User(Base):
     username = Column(String, unique=True, index=True)
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
+
+    role = Column(Enum(UserRole), default=UserRole.USER)
+    position_id = Column(Integer, ForeignKey("positions.id"))
+
+    position = relationship("UserPosition")
 
 class Message(Base):
     __tablename__ = "messages"

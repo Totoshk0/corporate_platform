@@ -1,4 +1,4 @@
-.PHONY: up down restart build logs ps clean help
+.PHONY: up down restart build logs ps clean help prune
 
 # Переменные
 PROJECT_NAME=corporate_platform
@@ -34,6 +34,14 @@ ps:
 ## Запустить тесты
 test:
 	docker exec $(PROJECT_NAME)_backend pytest tests/
+
+## Очистить неиспользуемые образы и контейнеры
+prune:
+	docker system prune -f
+
+## Очистить базу знаний (удалить все документы)
+clear-kb:
+	docker exec -it corporate_platform_db psql -U user -d corporate_platform -c "TRUNCATE TABLE knowledge_base CASCADE;"
 
 ## Полная очистка
 clean:

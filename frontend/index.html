@@ -3,56 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Corporate Platform - Модели</title>
+    <title>Corporate Knowledge Hub</title>
+    <!-- React & Babel -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+    </style>
 </head>
-<body class="bg-gray-100 p-8">
-    <div class="max-w-4xl mx-auto">
-        <h1 class="text-3xl font-bold mb-6 text-gray-800">Список доступных должностей</h1>
-        <div id="loading" class="text-blue-600">Загрузка данных...</div>
-        <div id="positions-list" class="grid grid-cols-1 md:grid-cols-3 gap-4 hidden">
-        </div>
+<body class="bg-slate-50 text-slate-900">
+    <div id="root"></div>
 
-        <div id="error" class="text-red-600 hidden mt-4">
-        </div>
-    </div>
-
-    <script>
-        async function fetchPositions() {
-            try {
-                const response = await fetch('http://localhost:8000/positions');
-                if (!response.ok) throw new Error('Network response was not ok');
-                const positions = await response.json();
-                const container = document.getElementById('positions-list');
-                const loading = document.getElementById('loading');
-                loading.classList.add('hidden');
-                container.classList.remove('hidden');
-                positions.forEach(pos => {
-                    const card = document.createElement('div');
-                    card.className = 'bg-white p-4 rounded-lg shadow border-l-4 ' + getLevelColor(pos.level);
-                    card.innerHTML = `
-                        <h3 class="font-bold text-lg">${pos.title}</h3>
-                        <p class="text-sm text-gray-500">Уровень: ${pos.level}</p>
-                    `;
-                    container.appendChild(card);
-                });
-            } catch (err) {
-                document.getElementById('loading').classList.add('hidden');
-                document.getElementById('error').classList.remove('hidden');
-                console.error(err);
-            }
-        }
-
-        function getLevelColor(level) {
-            switch(level) {
-                case 'TOP': return 'border-red-500';
-                case 'MIDDLE': return 'border-blue-500';
-                case 'LOWER': return 'border-green-500';
-                default: return 'border-gray-500';
-            }
-        }
-
-        fetchPositions();
-    </script>
+    <!-- Загрузка компонентов -->
+    <script type="text/babel" src="js/Navbar.js"></script>
+    <script type="text/babel" src="js/Home.js"></script>
+    <script type="text/babel" src="js/Login.js"></script>
+    <script type="text/babel" src="js/Documents.js"></script>
+    <!-- Главный файл приложения -->
+    <script type="text/babel" src="js/App.js"></script>
 </body>
 </html>

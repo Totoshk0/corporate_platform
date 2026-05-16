@@ -6,6 +6,7 @@ venv/
 ENV/
 env/
 .env
+sample_docs
 
 .docker/
 

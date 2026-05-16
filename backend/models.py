@@ -1,49 +1,92 @@
 import enum
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Enum
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Enum, Boolean
 from sqlalchemy.orm import relationship
 from pgvector.sqlalchemy import Vector
 from database import Base
 import datetime
 
 class UserRole(str, enum.Enum):
-    ADMIN = "admin"
-    USER = "user"
+    ADMIN = "ADMIN"
+    USER = "USER"
+    TECH_SPEC = "TECH_SPEC" # Тех. специалист, выдающий доступы
+
+class Department(Base):
+    __tablename__ = "departments"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True) # "Бухгалтерия", "Отдел кадров" и т.д.
+
+    users = relationship("User", back_populates="department")
+    items = relationship("KnowledgeBaseItem", back_populates="department")
 
 class CompanyRole(Base):
     __tablename__ = "company_roles"
-
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, unique=True, index=True)
-    level = Column(String) # 'TOP', 'MIDDLE', 'LOWER'
+    level = Column(String)
 
 class User(Base):
     __tablename__ = "users"
-
     id = Column(Integer, primary_key=True, index=True)
-    username = Column(String, unique=True, index=True)
+    full_name = Column(String) # ФИО
+    username = Column(String, unique=True, index=True) # IvanovII
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
 
     system_role = Column(Enum(UserRole), default=UserRole.USER)
     role_id = Column(Integer, ForeignKey("company_roles.id"), nullable=True)
+    department_id = Column(Integer, ForeignKey("departments.id"), nullable=True)
 
     company_role = relationship("CompanyRole")
+    department = relationship("Department", back_populates="users")
+    temp_accesses = relationship("TemporaryAccess", back_populates="user")
+
+class TemporaryAccess(Base):
+    __tablename__ = "temporary_access"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    target_department_id = Column(Integer, ForeignKey("departments.id"))
+    access_password = Column(String) # Единоразовый пароль
+    expires_at = Column(DateTime)
+    is_active = Column(Boolean, default=True)
+
+    user = relationship("User", back_populates="temp_accesses")
+    target_department = relationship("Department")
+
+class KnowledgeBaseItem(Base):
+    __tablename__ = "knowledge_base"
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, index=True)
+    content = Column(Text) # Полный текст для истории и подписей потом доделать!!!!!!!!
+
+    department_id = Column(Integer, ForeignKey("departments.id"))
+    doc_type = Column(String)
+    author_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    status = Column(String, default="draft") # draft, signed, archived
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    department = relationship("Department", back_populates="items")
+    author = relationship("User")
+    chunks = relationship("KnowledgeBaseChunk", back_populates="item", cascade="all, delete-orphan")
+
+class KnowledgeBaseChunk(Base):
+    __tablename__ = "knowledge_base_chunks"
+    id = Column(Integer, primary_key=True, index=True)
+    item_id = Column(Integer, ForeignKey("knowledge_base.id"))
+
+    embedding = Column(Vector(1024))
+    payload = Column(Text)
+
+    # Вынесу текст из payload в отдельную колонку для Postgres FTS в будущем
+    content_chunk = Column(Text)
+
+    item = relationship("KnowledgeBaseItem", back_populates="chunks")
+
 class Message(Base):
     __tablename__ = "messages"
-
     id = Column(Integer, primary_key=True, index=True)
     sender_id = Column(Integer, ForeignKey("users.id"))
     content = Column(Text)
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
-
     sender = relationship("User")
-
-class KnowledgeBaseItem(Base):
-    __tablename__ = "knowledge_base"
-
-    id = Column(Integer, primary_key=True, index=True)
-    title = Column(String, index=True)
-    content = Column(Text)
-    # 384 - это размерность для 'all-MiniLM-L6-v2'
-    embedding = Column(Vector(384))
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)

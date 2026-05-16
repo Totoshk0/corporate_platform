@@ -20,7 +20,11 @@ from embeddings import embedding_service
 from file_processor import file_processor
 from create_samples import create_corporate_samples
 
-app = FastAPI(title="Corporate Knowledge Hub API")
+app = FastAPI(
+    title="Corporate Knowledge Hub API",
+    description="Система корпоративной базы знаний с семантическим ИИ-поиском, гибридным ранжированием и контролем доступа.",
+    version="1.0.0"
+)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 # --- Helper Functions (Chunking & Meta) ---
@@ -239,7 +243,8 @@ async def startup_event():
                 db.add(models.CompanyRole(title=title, level="TOP" if title in ["CEO", "CTO", "CFO"] else "MIDDLE")); db.commit()
 
         # 3. Пользователи
-        pwd = auth.get_password_hash("password123")
+        admin_pwd = os.getenv("INITIAL_ADMIN_PASSWORD")
+        pwd = auth.get_password_hash(admin_pwd)
         users_raw = [
             ("GavrilovAA", "Гаврилов А.А.", "gavrilov@co.com", models.UserRole.ADMIN, "Технический отдел", "CEO"),
             ("IvanovII", "Иванов И.И.", "ivanov@co.com", models.UserRole.USER, "Бухгалтерия", "Specialist"),
@@ -250,7 +255,7 @@ async def startup_event():
             if not db.query(models.User).filter(models.User.username == uname).first():
                 dept = db.query(models.Department).filter(models.Department.name == d_name).first()
                 role = db.query(models.CompanyRole).filter(models.CompanyRole.title == r_title).first()
-                u = models.User(username=uname, full_name=full, email=email, hashed_password=pwd, 
+                u = models.User(username=uname, full_name=full, email=email, hashed_password=pwd,
                                 system_role=s_role, department_id=dept.id, role_id=role.id)
                 db.add(u); db.commit()
 

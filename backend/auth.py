@@ -6,8 +6,8 @@ import os
 
 # Секретные ключи должны храниться в .env
 SECRET_KEY = os.getenv("SECRET_KEY", "your-super-secret-key-change-it")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # 1 день
+ALGORITHM = os.getenv("ALGORITHM", "HS256")
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 1440))
 
 def verify_password(plain_password, hashed_password):
     if isinstance(hashed_password, str):

@@ -71,6 +71,30 @@ class KBChunkSchema(BaseModel):
     class Config:
         from_attributes = True
 
+class DocumentCreateRequest(BaseModel):
+    template_id: int
+    signatory_user_ids: List[int]
+    distribution_user_ids: List[int] = []
+    distribution_department_ids: List[int] = []
+
+class SignatorySchema(BaseModel):
+    user_id: int
+    full_name: str
+    is_signed: bool
+    signed_at: Optional[datetime] = None
+    class Config:
+        from_attributes = True
+
+class DistributionSchema(BaseModel):
+    user_id: Optional[int] = None
+    department_id: Optional[int] = None
+    class Config:
+        from_attributes = True
+
+class KBItemExtended(KBItem):
+    signatories: List[SignatorySchema] = []
+    distributions: List[DistributionSchema] = []
+
 class SearchQuery(BaseModel):
     query: str
     limit: Optional[int] = 5

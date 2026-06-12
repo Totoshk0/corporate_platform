@@ -63,12 +63,37 @@ class KnowledgeBaseItem(Base):
     author_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
     status = Column(String, default="draft") # draft, signed, archived
+    is_template = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
     department = relationship("Department", back_populates="items")
     author = relationship("User")
     chunks = relationship("KnowledgeBaseChunk", back_populates="item", cascade="all, delete-orphan")
+    signatories = relationship("DocumentSignatory", back_populates="item", cascade="all, delete-orphan")
+    distributions = relationship("DocumentDistribution", back_populates="item", cascade="all, delete-orphan")
+
+class DocumentSignatory(Base):
+    __tablename__ = "document_signatories"
+    id = Column(Integer, primary_key=True, index=True)
+    item_id = Column(Integer, ForeignKey("knowledge_base.id"))
+    user_id = Column(Integer, ForeignKey("users.id"))
+    is_signed = Column(Boolean, default=False)
+    signed_at = Column(DateTime, nullable=True)
+
+    item = relationship("KnowledgeBaseItem", back_populates="signatories")
+    user = relationship("User")
+
+class DocumentDistribution(Base):
+    __tablename__ = "document_distributions"
+    id = Column(Integer, primary_key=True, index=True)
+    item_id = Column(Integer, ForeignKey("knowledge_base.id"))
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True) # Кому лично
+    department_id = Column(Integer, ForeignKey("departments.id"), nullable=True) # Всему отделу
+
+    item = relationship("KnowledgeBaseItem", back_populates="distributions")
+    user = relationship("User")
+    department = relationship("Department")
 
 class KnowledgeBaseChunk(Base):
     __tablename__ = "knowledge_base_chunks"

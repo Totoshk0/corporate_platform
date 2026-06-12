@@ -41,7 +41,7 @@ const App = () => {
         <div className="min-h-screen flex flex-col">
             <Navbar user={user} view={view} setView={setView} handleLogout={handleLogout} />
             <main className="flex-grow">
-                {view === 'home' ? <Home user={user} /> : <Documents token={token} API_URL={API_URL} />}
+                {view === 'home' ? <Home user={user} token={token} API_URL={API_URL} /> : <Documents token={token} API_URL={API_URL} />}
             </main>
         </div>
     );

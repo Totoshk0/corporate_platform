@@ -22,6 +22,9 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str
+    system_role: Optional[str] = "USER"
+    department_id: Optional[int] = None
+    role_id: Optional[int] = None
 
 class User(UserBase):
     id: int

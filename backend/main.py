@@ -52,10 +52,10 @@ def extract_meta(text: str, filename: str):
 
 # --- Core KB Service ---
 
-def upsert_document(db: Session, title: str, content: str, dept_id: int, doc_type: str, author_id: Optional[int] = None):
+def upsert_document(db: Session, title: str, content: str, dept_id: int, doc_type: str, author_id: Optional[int] = None, is_template: bool = False):
     item = models.KnowledgeBaseItem(
         title=title, content=content, department_id=dept_id,
-        doc_type=doc_type, author_id=author_id
+        doc_type=doc_type, author_id=author_id, is_template=is_template
     )
     db.add(item)
     db.flush()
@@ -103,7 +103,7 @@ async def find_k(db: Session, query_text: str, allowed_depts: List[int], limit: 
             ) as t_score
         FROM knowledge_base_chunks c
         JOIN knowledge_base i ON c.item_id = i.id
-        WHERE i.department_id IN :depts
+        WHERE i.department_id IN :depts AND i.is_template = FALSE
         ORDER BY ( (1 - (c.embedding <=> :emb)) * 0.4 +
                    (ts_rank_cd(to_tsvector('russian', c.content_chunk), plainto_tsquery('russian', :query)) +
                     ts_rank_cd(to_tsvector('russian', i.title), plainto_tsquery('russian', :query)) * 2.0 +
@@ -150,6 +150,11 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
 async def get_tech_spec(current_user: models.User = Depends(get_current_user)):
     if current_user.system_role not in [models.UserRole.ADMIN, models.UserRole.TECH_SPEC]:
         raise HTTPException(status_code=403, detail="Only Tech Specialists can grant access")
+    return current_user
+
+async def get_admin_user(current_user: models.User = Depends(get_current_user)):
+    if current_user.system_role != models.UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Only Admins can perform this action")
     return current_user
 
 # --- Seeding Logic ---
@@ -209,7 +214,8 @@ def seed_knowledge_base(db: Session):
                 if not dept: continue
                 with open(os.path.join(base_path, fname), 'rb') as f:
                     text_content = file_processor.extract_text(f.read(), fname)
-                    upsert_document(db, fname, text_content, dept.id, dtype, admin.id if admin else None)
+                    is_tmpl = "шаблон" in fname.lower()
+                    upsert_document(db, fname, text_content, dept.id, dtype, admin.id if admin else None, is_template=is_tmpl)
                 found = True
                 break
         if not found:
@@ -221,13 +227,17 @@ def seed_knowledge_base(db: Session):
 async def startup_event():
     with engine.connect() as conn:
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        conn.commit()
+        
+    models.Base.metadata.create_all(bind=engine)
+
+    with engine.connect() as conn:
         conn.execute(text("""
             CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_fts
             ON knowledge_base_chunks
             USING GIN (to_tsvector('russian', content_chunk));
         """))
         conn.commit()
-    models.Base.metadata.create_all(bind=engine)
 
     with SessionLocal() as db:
         # 1. Отделы
@@ -263,6 +273,38 @@ async def startup_event():
         seed_knowledge_base(db)
 
 # --- Endpoints ---
+
+@app.get("/users/all", response_model=List[schemas.User])
+async def list_users(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    return db.query(models.User).all()
+
+@app.get("/departments", response_model=List[schemas.DepartmentSchema])
+async def list_departments(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    return db.query(models.Department).all()
+
+@app.get("/roles", response_model=List[schemas.CompanyRoleSchema])
+async def list_roles(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    return db.query(models.CompanyRole).all()
+
+@app.post("/users", response_model=schemas.User)
+async def create_user(user_data: schemas.UserCreate, db: Session = Depends(get_db), admin: models.User = Depends(get_admin_user)):
+    if db.query(models.User).filter(models.User.username == user_data.username).first():
+        raise HTTPException(status_code=400, detail="Username already registered")
+    
+    hashed_pwd = auth.get_password_hash(user_data.password)
+    db_user = models.User(
+        username=user_data.username,
+        full_name=user_data.full_name,
+        email=user_data.email,
+        hashed_password=hashed_pwd,
+        system_role=user_data.system_role,
+        department_id=user_data.department_id,
+        role_id=user_data.role_id
+    )
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return db_user
 
 @app.post("/token", response_model=schemas.Token)
 async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):

@@ -330,6 +330,94 @@ async def upload(doc_type: str, target_department_id: Optional[int] = None, file
     item = upsert_document(db, file.filename, text_content, dept_id, doc_type, user.id)
     return item
 
+@app.get("/kb/templates", response_model=List[schemas.KBItem])
+async def list_templates(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    return db.query(models.KnowledgeBaseItem).filter(models.KnowledgeBaseItem.is_template == True).all()
+
+@app.post("/kb/documents/draft", response_model=schemas.KBItemExtended)
+async def create_from_template(data: schemas.DocumentCreateRequest, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    template = db.query(models.KnowledgeBaseItem).filter(models.KnowledgeBaseItem.id == data.template_id).first()
+    if not template: raise HTTPException(status_code=404, detail="Template not found")
+
+    # Создаем новый документ на основе шаблона
+    new_doc = models.KnowledgeBaseItem(
+        title=f"Драфт: {template.title}",
+        content=template.content,
+        department_id=template.department_id,
+        doc_type=template.doc_type,
+        author_id=user.id,
+        is_template=False,
+        status="draft"
+    )
+    db.add(new_doc)
+    db.flush() # Получаем ID нового документа
+
+    # Добавляем подписантов
+    for u_id in data.signatory_user_ids:
+        db.add(models.DocumentSignatory(item_id=new_doc.id, user_id=u_id))
+
+    # Добавляем рассылку
+    for u_id in data.distribution_user_ids:
+        db.add(models.DocumentDistribution(item_id=new_doc.id, user_id=u_id))
+    for d_id in data.distribution_department_ids:
+        db.add(models.DocumentDistribution(item_id=new_doc.id, department_id=d_id))
+
+    db.commit()
+    db.refresh(new_doc)
+
+    # Форматируем ответ
+    return {
+        **new_doc.__dict__,
+        "signatories": [
+            {"user_id": s.user_id, "full_name": s.user.full_name, "is_signed": s.is_signed, "signed_at": s.signed_at}
+            for s in new_doc.signatories
+        ],
+        "distributions": [
+            {"user_id": d.user_id, "department_id": d.department_id}
+            for d in new_doc.distributions
+        ]
+    }
+
+@app.get("/kb/documents/{id}", response_model=schemas.KBItemExtended)
+async def get_document(id: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    doc = db.query(models.KnowledgeBaseItem).filter(models.KnowledgeBaseItem.id == id).first()
+    if not doc: raise HTTPException(status_code=404, detail="Document not found")
+
+    return {
+        **doc.__dict__,
+        "signatories": [
+            {"user_id": s.user_id, "full_name": s.user.full_name, "is_signed": s.is_signed, "signed_at": s.signed_at}
+            for s in doc.signatories
+        ],
+        "distributions": [
+            {"user_id": d.user_id, "department_id": d.department_id}
+            for d in doc.distributions
+        ]
+    }
+
+@app.post("/kb/documents/{id}/sign")
+async def sign_document(id: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    sig = db.query(models.DocumentSignatory).filter(
+        models.DocumentSignatory.item_id == id,
+        models.DocumentSignatory.user_id == user.id
+    ).first()
+    if not sig: raise HTTPException(status_code=403, detail="You are not a signatory for this document")
+
+    sig.is_signed = True
+    sig.signed_at = datetime.utcnow()
+
+    # Если все подписали, меняем статус документа
+    all_signed = db.query(models.DocumentSignatory).filter(
+        models.DocumentSignatory.item_id == id,
+        models.DocumentSignatory.is_signed == False
+    ).count() == 0
+    if all_signed:
+        doc = db.query(models.KnowledgeBaseItem).filter(models.KnowledgeBaseItem.id == id).first()
+        doc.status = "signed"
+
+    db.commit()
+    return {"message": "Successfully signed"}
+
 @app.post("/kb/search")
 async def search(query: schemas.SearchQuery, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     # Всегда добавляем Общий отдел к списку разрешенных

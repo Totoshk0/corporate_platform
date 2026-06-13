@@ -1,6 +1,7 @@
-const Documents = ({ token, API_URL }) => {
+const Documents = ({ token, API_URL, user }) => {
   const [docs, setDocs] = React.useState([]);
   const [selectedDoc, setSelectedDoc] = React.useState(null);
+  const [docDetails, setDocDetails] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [searchQuery, setSearchQuery] = React.useState("");
   const [activeQuery, setActiveQuery] = React.useState("");
@@ -18,6 +19,7 @@ const Documents = ({ token, API_URL }) => {
     distributions: [],
   });
   const [creating, setCreating] = React.useState(false);
+  const [signing, setSigning] = React.useState(false);
 
   React.useEffect(() => {
     fetchDocs("");
@@ -71,6 +73,21 @@ const Documents = ({ token, API_URL }) => {
     }
   };
 
+  const handleSelectDoc = async (doc) => {
+    setSelectedDoc(doc);
+    setDocDetails(null);
+    try {
+      const res = await fetch(`${API_URL}/kb/documents/${doc.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        setDocDetails(await res.json());
+      }
+    } catch (e) {
+      console.error("Error loading doc details", e);
+    }
+  };
+
   const handleCreate = async (e) => {
     if (e) {
       e.preventDefault();
@@ -93,19 +110,35 @@ const Documents = ({ token, API_URL }) => {
       if (res.ok) {
         setIsModalOpen(false);
         setForm({ template_id: "", signatories: [], distributions: [] });
-        await fetchDocs(""); // Ждем обновления списка
+        await fetchDocs("");
       } else {
-        const errorData = await res.json();
-        console.error("Server Error:", errorData);
-        alert(
-          "Ошибка при создании: " + (errorData.detail || "Неизвестная ошибка"),
-        );
+        const err = await res.json();
+        alert("Ошибка при создании: " + (err.detail || "Неизвестная ошибка"));
       }
     } catch (e) {
-      console.error("Network Error:", e);
-      alert("Ошибка сети. Проверьте соединение с сервером.");
+      alert("Ошибка сети");
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleSign = async () => {
+    setSigning(true);
+    try {
+      const res = await fetch(
+        `${API_URL}/kb/documents/${selectedDoc.id}/sign`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
+      if (res.ok) {
+        await handleSelectDoc(selectedDoc); // Перезагружаем детали для обновления галочек
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSigning(false);
     }
   };
 
@@ -139,7 +172,6 @@ const Documents = ({ token, API_URL }) => {
             <button
               onClick={() => setIsModalOpen(true)}
               className="w-8 h-8 bg-indigo-600 text-white rounded-xl flex items-center justify-center hover:bg-indigo-700 transition shadow-lg shadow-indigo-100 group"
-              title="Создать по шаблону"
             >
               <i className="fas fa-plus text-xs group-hover:rotate-90 transition-transform"></i>
             </button>
@@ -179,7 +211,7 @@ const Documents = ({ token, API_URL }) => {
             docs.map((doc) => (
               <button
                 key={doc.id + (doc.score || 0)}
-                onClick={() => setSelectedDoc(doc)}
+                onClick={() => handleSelectDoc(doc)}
                 className={`w-full text-left p-4 hover:bg-indigo-50/50 transition flex items-start gap-3 group ${selectedDoc?.id === doc.id ? "bg-indigo-50 border-r-4 border-indigo-500" : ""}`}
               >
                 <div
@@ -232,9 +264,108 @@ const Documents = ({ token, API_URL }) => {
                 {selectedDoc.doc_type}
               </span>
             </div>
-            <div className="prose prose-slate max-w-none whitespace-pre-wrap font-serif text-slate-700 text-lg leading-relaxed">
+            <div className="prose prose-slate max-w-none whitespace-pre-wrap font-serif text-slate-700 text-lg leading-relaxed mb-12">
               {selectedDoc.content}
             </div>
+
+            {docDetails && (
+              <div className="mt-12 pt-10 border-t border-slate-100">
+                <div className="flex items-center justify-between mb-6">
+                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                    Маршрут согласования
+                  </h4>
+                  <span
+                    className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-tighter ${docDetails.status === "signed" ? "bg-green-100 text-green-600" : "bg-amber-100 text-amber-600"}`}
+                  >
+                    {docDetails.status === "signed"
+                      ? "Документ подписан"
+                      : "В процессе согласования"}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {docDetails.signatories.map((s) => (
+                    <div
+                      key={s.user_id}
+                      className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${s.is_signed ? "bg-green-500 text-white" : "bg-slate-200 text-slate-500"}`}
+                        >
+                          {s.is_signed ? (
+                            <i className="fas fa-check"></i>
+                          ) : (
+                            s.full_name[0]
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-slate-700 leading-none">
+                            {s.full_name}
+                          </p>
+                          <p className="text-[10px] text-slate-400 mt-1">
+                            {s.is_signed
+                              ? `Подписано: ${new Date(s.signed_at).toLocaleDateString()}`
+                              : "Ожидает подписи"}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Рассылка по отделам */}
+                {docDetails.distributions.filter((d) => d.department_id)
+                  .length > 0 && (
+                  <div className="mt-8">
+                    <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 ml-1">
+                      Копии направлены в отделы
+                    </h4>
+                    <div className="flex flex-wrap gap-2">
+                      {docDetails.distributions
+                        .filter((d) => d.department_id)
+                        .map((d, idx) => (
+                          <span
+                            key={idx}
+                            className="px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl border border-indigo-100 text-xs font-bold flex items-center gap-2"
+                          >
+                            <i className="fas fa-broadcast-tower text-[10px] opacity-50"></i>
+                            {d.department_name ||
+                              `Отдел ID: ${d.department_id}`}
+                          </span>
+                        ))}
+                    </div>
+                  </div>
+                )}
+
+                {docDetails.signatories.find(
+                  (s) => s.user_id === user?.id && !s.is_signed,
+                ) && (
+                  <div className="mt-8 p-6 bg-indigo-50 rounded-3xl border border-indigo-100 flex items-center justify-between animate-in slide-in-from-bottom duration-500">
+                    <div>
+                      <p className="text-sm font-bold text-indigo-900">
+                        Ваша подпись обязательна
+                      </p>
+                      <p className="text-xs text-indigo-600 mt-1">
+                        Ознакомьтесь с документом перед подтверждением
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleSign}
+                      disabled={signing}
+                      className="px-8 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition flex items-center gap-2"
+                    >
+                      {signing ? (
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                      ) : (
+                        <i className="fas fa-pen-nib text-xs"></i>
+                      )}
+                      {signing ? "Подписание..." : "Подписать"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center text-slate-300">
@@ -248,7 +379,6 @@ const Documents = ({ token, API_URL }) => {
         )}
       </div>
 
-      {/* Modal Stage 2: Full Functional UI */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
           <div className="bg-white w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
@@ -272,9 +402,8 @@ const Documents = ({ token, API_URL }) => {
               onSubmit={handleCreate}
               className="p-8 space-y-8 max-h-[70vh] overflow-y-auto custom-scrollbar"
             >
-              {/* Шаблон */}
               <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase mb-3 tracking-widest ml-1">
+                <label className="block text-xs font-bold text-slate-400 uppercase mb-3 ml-1">
                   1. Выбор шаблона
                 </label>
                 <div className="grid grid-cols-1 gap-2">
@@ -283,7 +412,7 @@ const Documents = ({ token, API_URL }) => {
                       key={t.id}
                       type="button"
                       onClick={() => setForm({ ...form, template_id: t.id })}
-                      className={`text-left p-4 rounded-2xl border-2 transition-all ${form.template_id === t.id ? "border-indigo-600 bg-indigo-50/50 shadow-md" : "border-slate-100 hover:border-slate-200 bg-slate-50/50"}`}
+                      className={`text-left p-4 rounded-2xl border-2 transition-all ${form.template_id === t.id ? "border-indigo-600 bg-indigo-50/50" : "border-slate-100 hover:border-slate-200 bg-slate-50/50"}`}
                     >
                       <p
                         className={`font-bold text-sm ${form.template_id === t.id ? "text-indigo-700" : "text-slate-700"}`}
@@ -297,15 +426,13 @@ const Documents = ({ token, API_URL }) => {
                   ))}
                 </div>
               </div>
-
-              {/* Подписанты */}
               <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase mb-3 tracking-widest ml-1">
+                <label className="block text-xs font-bold text-slate-400 uppercase mb-3 ml-1">
                   2. Кто должен подписать?
                 </label>
                 <div className="space-y-2">
                   {modalData.users
-                    .filter((u) => u.username !== "GavrilovAA")
+                    .filter((u) => u.id !== user?.id)
                     .map((u) => (
                       <label
                         key={u.id}
@@ -315,13 +442,13 @@ const Documents = ({ token, API_URL }) => {
                           type="checkbox"
                           checked={form.signatories.includes(u.id)}
                           onChange={() => toggleSignatory(u.id)}
-                          className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                          className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
                         />
                         <div className="ml-3">
-                          <p className="text-sm font-bold text-slate-700 leading-none">
+                          <p className="text-sm font-bold text-slate-700">
                             {u.full_name}
                           </p>
-                          <p className="text-[10px] text-slate-400 font-medium mt-1">
+                          <p className="text-[10px] text-slate-400">
                             {u.department?.name || "Отдел не указан"}
                           </p>
                         </div>
@@ -329,10 +456,8 @@ const Documents = ({ token, API_URL }) => {
                     ))}
                 </div>
               </div>
-
-              {/* Рассылка по отделам */}
               <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase mb-3 tracking-widest ml-1">
+                <label className="block text-xs font-bold text-slate-400 uppercase mb-3 ml-1">
                   3. Кому в рассылку? (Отделы)
                 </label>
                 <div className="flex flex-wrap gap-2">
@@ -349,26 +474,24 @@ const Documents = ({ token, API_URL }) => {
                 </div>
               </div>
             </form>
-
             <div className="p-8 bg-slate-50 border-t border-slate-100 flex gap-4">
               <button
                 type="button"
                 onClick={() => setIsModalOpen(false)}
-                className="flex-1 py-3.5 text-sm font-bold text-slate-400 hover:text-slate-600 transition"
+                className="flex-1 py-3.5 text-sm font-bold text-slate-400"
               >
                 Отмена
               </button>
               <button
                 onClick={handleCreate}
                 disabled={creating || !form.template_id}
-                className="flex-[2] py-3.5 bg-indigo-600 text-white font-bold rounded-2xl shadow-xl shadow-indigo-100 hover:bg-indigo-700 disabled:opacity-50 disabled:shadow-none transition flex items-center justify-center gap-2"
+                className="flex-[2] py-3.5 bg-indigo-600 text-white font-bold rounded-2xl shadow-xl hover:bg-indigo-700 transition flex items-center justify-center gap-2"
               >
                 {creating ? (
                   <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
                 ) : (
-                  <i className="fas fa-check text-xs"></i>
+                  "Создать документ"
                 )}
-                {creating ? "Создание..." : "Создать документ"}
               </button>
             </div>
           </div>

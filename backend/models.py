@@ -5,7 +5,7 @@ from pgvector.sqlalchemy import Vector
 from database import Base
 import datetime
 
-class UserRole(str, enum.Enum):
+class UserRole(enum.Enum):
     ADMIN = "ADMIN"
     USER = "USER"
     TECH_SPEC = "TECH_SPEC" # Тех. специалист, выдающий доступы
@@ -21,8 +21,8 @@ class Department(Base):
 class CompanyRole(Base):
     __tablename__ = "company_roles"
     id = Column(Integer, primary_key=True, index=True)
-    title = Column(String, unique=True, index=True)
-    level = Column(String)
+    title = Column(String, unique=True)
+    level = Column(String) # TOP, MIDDLE, LOW
 
 class User(Base):
     __tablename__ = "users"
@@ -98,15 +98,32 @@ class DocumentDistribution(Base):
 class KnowledgeBaseChunk(Base):
     __tablename__ = "knowledge_base_chunks"
     id = Column(Integer, primary_key=True, index=True)
-    item_id = Column(Integer, ForeignKey("knowledge_base.id"))
-
+    item_id = Column(Integer, ForeignKey("knowledge_base.id", ondelete="CASCADE"))
     embedding = Column(Vector(1024))
-    payload = Column(Text)
-
-    # Вынесу текст из payload в отдельную колонку для Postgres FTS в будущем
+    payload = Column(Text) # JSON с метаданными
     content_chunk = Column(Text)
 
     item = relationship("KnowledgeBaseItem", back_populates="chunks")
+
+class ChatSession(Base):
+    __tablename__ = "chat_sessions"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    title = Column(String)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    user = relationship("User")
+    messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan")
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey("chat_sessions.id"))
+    role = Column(String) # user / assistant
+    content = Column(Text)
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+
+    session = relationship("ChatSession", back_populates="messages")
 
 class Message(Base):
     __tablename__ = "messages"

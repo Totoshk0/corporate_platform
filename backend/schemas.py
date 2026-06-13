@@ -88,8 +88,33 @@ class SignatorySchema(BaseModel):
 class DistributionSchema(BaseModel):
     user_id: Optional[int] = None
     department_id: Optional[int] = None
+    department_name: Optional[str] = None
     class Config:
         from_attributes = True
+
+class ChatMessageSchema(BaseModel):
+    id: int
+    role: str
+    content: str
+    timestamp: datetime
+    class Config:
+        from_attributes = True
+
+class ChatSessionSchema(BaseModel):
+    id: int
+    title: str
+    created_at: datetime
+    class Config:
+        from_attributes = True
+
+class ChatAskRequest(BaseModel):
+    query: str
+    session_id: Optional[int] = None # Если пусто - создастся новый чат
+
+class ChatResponse(BaseModel):
+    session_id: int
+    answer: str # Пока заглушка
+    sources: List[int] = [] # ID документов, которые нашел поиск
 
 class KBItemExtended(KBItem):
     signatories: List[SignatorySchema] = []

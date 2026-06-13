@@ -1,33 +1,18 @@
-const { useState, useEffect } = React;
+const { useState, useEffect, useCallback } = React;
 const API_URL = "http://localhost:8000";
 
 const App = () => {
   const [token, setToken] = useState(localStorage.getItem("token"));
   const [user, setUser] = useState(null);
 
-  // Senior Solution: Синхронизация view с Hash в URL
   const getInitialView = () => {
     const hash = window.location.hash.replace("#", "");
     return ["home", "documents", "chat"].includes(hash) ? hash : "home";
   };
   const [view, setView] = useState(getInitialView());
 
-  useEffect(() => {
-    if (token) {
-      fetchUser();
-    }
-    // Слушаем изменение URL (кнопки "Назад/Вперед" или ручной ввод)
-    const handleHashChange = () => setView(getInitialView());
-    window.addEventListener("hashchange", handleHashChange);
-    return () => window.removeEventListener("hashchange", handleHashChange);
-  }, [token]);
-
-  // Синхронизируем Hash при смене view
-  useEffect(() => {
-    window.location.hash = view;
-  }, [view]);
-
-  const fetchUser = async () => {
+  const fetchUser = useCallback(async () => {
+    if (!token) return;
     try {
       const res = await fetch(`${API_URL}/users/me`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -36,16 +21,25 @@ const App = () => {
         const data = await res.json();
         setUser(data);
       } else if (res.status === 401) {
-        // Разлогиниваем ТОЛЬКО если токен невалиден
         handleLogout();
       }
     } catch (e) {
-      // Если сервер упал или перезагружается, просто ждем, не выкидывая пользователя
-      console.warn(
-        "Backend is warming up or unavailable. Retrying in background...",
-      );
+      console.warn("Backend warming up or network glitch...");
     }
-  };
+  }, [token]);
+
+  useEffect(() => {
+    fetchUser();
+    const handleHashChange = () => setView(getInitialView());
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, [fetchUser]);
+
+  useEffect(() => {
+    if (window.location.hash.replace("#", "") !== view) {
+      window.location.hash = view;
+    }
+  }, [view]);
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -79,7 +73,9 @@ const App = () => {
         {view === "home" && (
           <Home user={user} token={token} API_URL={API_URL} />
         )}
-        {view === "documents" && <Documents token={token} API_URL={API_URL} />}
+        {view === "documents" && (
+          <Documents token={token} API_URL={API_URL} user={user} />
+        )}
       </main>
     </div>
   );

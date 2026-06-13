@@ -371,10 +371,15 @@ async def create_from_template(data: schemas.DocumentCreateRequest, db: Session 
             for s in new_doc.signatories
         ],
         "distributions": [
-            {"user_id": d.user_id, "department_id": d.department_id}
+            {
+                "user_id": d.user_id,
+                "department_id": d.department_id,
+                "department_name": d.department.name if d.department else None
+            }
             for d in new_doc.distributions
         ]
-    }
+        }
+
 @app.get("/kb/documents/{id}", response_model=schemas.KBItemExtended)
 async def get_document(id: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     doc = db.query(models.KnowledgeBaseItem).filter(models.KnowledgeBaseItem.id == id).first()
@@ -387,7 +392,11 @@ async def get_document(id: int, db: Session = Depends(get_db), user: models.User
             for s in doc.signatories
         ],
         "distributions": [
-            {"user_id": d.user_id, "department_id": d.department_id}
+            {
+                "user_id": d.user_id,
+                "department_id": d.department_id,
+                "department_name": d.department.name if d.department else None
+            }
             for d in doc.distributions
         ]
     }
@@ -415,7 +424,57 @@ async def sign_document(id: int, db: Session = Depends(get_db), user: models.Use
     db.commit()
     return {"message": "Successfully signed"}
 
+# --- Chat Endpoints ---
+
+@app.get("/chat/sessions", response_model=List[schemas.ChatSessionSchema])
+async def list_chat_sessions(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    return db.query(models.ChatSession).filter(models.ChatSession.user_id == user.id).order_by(models.ChatSession.created_at.desc()).all()
+
+@app.get("/chat/{session_id}/history", response_model=List[schemas.ChatMessageSchema])
+async def get_chat_history(session_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    session = db.query(models.ChatSession).filter(models.ChatSession.id == session_id, models.ChatSession.user_id == user.id).first()
+    if not session: raise HTTPException(status_code=404, detail="Session not found")
+    return db.query(models.ChatMessage).filter(models.ChatMessage.session_id == session_id).order_by(models.ChatMessage.timestamp.asc()).all()
+
+@app.post("/chat/ask", response_model=schemas.ChatResponse)
+async def chat_ask(req: schemas.ChatAskRequest, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    # 1. Работа с сессией
+    session_id = req.session_id
+    if not session_id:
+        new_session = models.ChatSession(user_id=user.id, title=req.query[:50] + "...")
+        db.add(new_session); db.flush()
+        session_id = new_session.id
+
+    # 2. Сохраняем вопрос пользователя
+    user_msg = models.ChatMessage(session_id=session_id, role="user", content=req.query)
+    db.add(user_msg)
+
+    # 3. Ищем контекст с учетом прав доступа пользователя!!!
+    common_dept = db.query(models.Department).filter(models.Department.name == "Общий отдел").first()
+    allowed_depts = [user.department_id]
+    if common_dept: allowed_depts.append(common_dept.id)
+
+    # Администратор видит всё
+    if user.system_role == models.UserRole.ADMIN:
+        allowed_depts = [d[0] for d in db.query(models.Department.id).all()]
+
+    context_results = await find_k(db, req.query, allowed_depts, limit=3)
+    sources = [r["id"] for r in context_results]
+
+    # Тут ИИ
+    context_text = "\n\n".join([f"Документ '{r['title']}':\n{r['content']}" for r in context_results])
+
+    # 4. Пока LLM нет возвращаем заглушку
+    ai_answer = f"Я нашел информацию в {len(sources)} документах. (LLM будет подключена на следующем этапе). \nВот что я узнал: " + (context_text[:200] + "..." if context_text else "Ничего не найдено.")
+
+    ai_msg = models.ChatMessage(session_id=session_id, role="assistant", content=ai_answer)
+    db.add(ai_msg)
+    db.commit()
+
+    return {"session_id": session_id, "answer": ai_answer, "sources": sources}
+
 @app.post("/kb/search")
+
 async def search(query: schemas.SearchQuery, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     # Всегда добавляем Общий отдел к списку разрешенных
     common_dept = db.query(models.Department).filter(models.Department.name == "Общий отдел").first()

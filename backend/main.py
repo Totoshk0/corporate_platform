@@ -339,33 +339,31 @@ async def create_from_template(data: schemas.DocumentCreateRequest, db: Session 
     template = db.query(models.KnowledgeBaseItem).filter(models.KnowledgeBaseItem.id == data.template_id).first()
     if not template: raise HTTPException(status_code=404, detail="Template not found")
 
-    # Создаем новый документ на основе шаблона
-    new_doc = models.KnowledgeBaseItem(
+    # Используем upsert_document для создания индексированного документа
+    new_doc = upsert_document(
+        db=db,
         title=f"Драфт: {template.title}",
         content=template.content,
-        department_id=template.department_id,
+        dept_id=template.department_id,
         doc_type=template.doc_type,
         author_id=user.id,
-        is_template=False,
-        status="draft"
+        is_template=False
     )
-    db.add(new_doc)
-    db.flush() # Получаем ID нового документа
+    # Статус по умолчанию ставится в модели, но мы можем уточнить
+    new_doc.status = "draft"
+    db.flush()
 
     # Добавляем подписантов
     for u_id in data.signatory_user_ids:
         db.add(models.DocumentSignatory(item_id=new_doc.id, user_id=u_id))
 
     # Добавляем рассылку
-    for u_id in data.distribution_user_ids:
-        db.add(models.DocumentDistribution(item_id=new_doc.id, user_id=u_id))
     for d_id in data.distribution_department_ids:
         db.add(models.DocumentDistribution(item_id=new_doc.id, department_id=d_id))
 
     db.commit()
     db.refresh(new_doc)
 
-    # Форматируем ответ
     return {
         **new_doc.__dict__,
         "signatories": [
@@ -377,7 +375,6 @@ async def create_from_template(data: schemas.DocumentCreateRequest, db: Session 
             for d in new_doc.distributions
         ]
     }
-
 @app.get("/kb/documents/{id}", response_model=schemas.KBItemExtended)
 async def get_document(id: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     doc = db.query(models.KnowledgeBaseItem).filter(models.KnowledgeBaseItem.id == id).first()

@@ -5,11 +5,16 @@ const App = () => {
   const [token, setToken] = useState(localStorage.getItem("token"));
   const [user, setUser] = useState(null);
 
-  const getInitialView = () => {
+  const getInitialState = () => {
     const hash = window.location.hash.replace("#", "");
-    return ["home", "documents", "chat"].includes(hash) ? hash : "home";
+    const [view, id] = hash.split('/');
+    return {
+        view: ["home", "documents", "chat"].includes(view) ? view : "home",
+        id: id || null
+    };
   };
-  const [view, setView] = useState(getInitialView());
+
+  const [route, setRoute] = useState(getInitialState());
 
   const fetchUser = useCallback(async () => {
     if (!token) return;
@@ -23,59 +28,33 @@ const App = () => {
       } else if (res.status === 401) {
         handleLogout();
       }
-    } catch (e) {
-      console.warn("Backend warming up or network glitch...");
-    }
+    } catch (e) { console.warn("Backend warming up..."); }
   }, [token]);
 
   useEffect(() => {
     fetchUser();
-    const handleHashChange = () => setView(getInitialView());
+    const handleHashChange = () => setRoute(getInitialState());
     window.addEventListener("hashchange", handleHashChange);
     return () => window.removeEventListener("hashchange", handleHashChange);
   }, [fetchUser]);
-
-  useEffect(() => {
-    if (window.location.hash.replace("#", "") !== view) {
-      window.location.hash = view;
-    }
-  }, [view]);
 
   const handleLogout = () => {
     localStorage.removeItem("token");
     setToken(null);
     setUser(null);
-    setView("home");
     window.location.hash = "home";
   };
 
   if (!token) {
-    return (
-      <Login
-        setToken={(t) => {
-          localStorage.setItem("token", t);
-          setToken(t);
-        }}
-        API_URL={API_URL}
-      />
-    );
+    return <Login setToken={(t) => { localStorage.setItem("token", t); setToken(t); }} API_URL={API_URL} />;
   }
 
   return (
     <div className="min-h-screen flex flex-col">
-      <Navbar
-        user={user}
-        view={view}
-        setView={setView}
-        handleLogout={handleLogout}
-      />
+      <Navbar user={user} view={route.view} setView={(v) => window.location.hash = v} handleLogout={handleLogout} />
       <main className="flex-grow">
-        {view === "home" && (
-          <Home user={user} token={token} API_URL={API_URL} />
-        )}
-        {view === "documents" && (
-          <Documents token={token} API_URL={API_URL} user={user} />
-        )}
+        {route.view === "home" && <Home user={user} token={token} API_URL={API_URL} />}
+        {route.view === "documents" && <Documents token={token} API_URL={API_URL} user={user} initialId={route.id} />}
       </main>
     </div>
   );

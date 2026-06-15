@@ -1,5 +1,5 @@
 const { useState, useEffect, useCallback } = React;
-const API_URL = "http://localhost:8000";
+const API_URL = "http://178.20.46.128:8000";
 
 const App = () => {
   const [token, setToken] = useState(localStorage.getItem("token"));
@@ -7,10 +7,10 @@ const App = () => {
 
   const getInitialState = () => {
     const hash = window.location.hash.replace("#", "");
-    const [view, id] = hash.split('/');
+    const [view, id] = hash.split("/");
     return {
-        view: ["home", "documents", "chat"].includes(view) ? view : "home",
-        id: id || null
+      view: ["home", "documents", "chat"].includes(view) ? view : "home",
+      id: id || null,
     };
   };
 
@@ -28,7 +28,9 @@ const App = () => {
       } else if (res.status === 401) {
         handleLogout();
       }
-    } catch (e) { console.warn("Backend warming up..."); }
+    } catch (e) {
+      console.warn("Backend warming up...");
+    }
   }, [token]);
 
   useEffect(() => {
@@ -46,15 +48,38 @@ const App = () => {
   };
 
   if (!token) {
-    return <Login setToken={(t) => { localStorage.setItem("token", t); setToken(t); }} API_URL={API_URL} />;
+    return (
+      <Login
+        setToken={(t) => {
+          localStorage.setItem("token", t);
+          setToken(t);
+        }}
+        API_URL={API_URL}
+      />
+    );
   }
 
   return (
     <div className="min-h-screen flex flex-col">
-      <Navbar user={user} view={route.view} setView={(v) => window.location.hash = v} handleLogout={handleLogout} />
+      <Navbar
+        user={user}
+        view={route.view}
+        setView={(v) => (window.location.hash = v)}
+        handleLogout={handleLogout}
+      />
       <main className="flex-grow">
-        {route.view === "home" && <Home user={user} token={token} API_URL={API_URL} />}
-        {route.view === "documents" && <Documents token={token} API_URL={API_URL} user={user} initialId={route.id} />}
+        {route.view === "home" && (
+          <Home user={user} token={token} API_URL={API_URL} />
+        )}
+        {route.view === "documents" && (
+          <Documents
+            token={token}
+            API_URL={API_URL}
+            user={user}
+            initialId={route.id}
+          />
+        )}
+        {route.view === "chat" && <Chat token={token} API_URL={API_URL} user={user} />}
       </main>
     </div>
   );

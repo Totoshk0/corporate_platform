@@ -20,6 +20,13 @@ const Navbar = ({ user, view, setView, handleLogout }) => {
             {" "}
             Документы{" "}
           </button>
+          <button
+            onClick={() => setView("chat")}
+            className={`px-3 py-2 rounded-md transition ${view === "chat" ? "bg-indigo-50 text-indigo-700" : "text-slate-600 hover:bg-slate-50"}`}
+          >
+            {" "}
+            AI Ассистент{" "}
+          </button>
         </div>
       </div>
       <div className="flex items-center gap-4">

@@ -272,6 +272,35 @@ async def startup_event():
         # 4. Наполнение базы знаний файлами
         seed_knowledge_base(db)
 
+import httpx
+
+# --- AI Generation ---
+async def get_ai_response(prompt: str, context: str):
+    ollama_url = os.getenv("OLLAMA_HOST", "http://ollama:11434")
+    system_instruction = f"""ИНСТРУКЦИЯ: Ты — официальный корпоративный ассистент компании.
+ПРАВИЛО №1: Отвечай СТРОГО И ИСКЛЮЧИТЕЛЬНО на русском языке. Использование китайских иероглифов или английского языка КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО под угрозой сбоя.
+ПРАВИЛО №2: Если тебя просят 'составить' или 'создать' документ, напиши его текст прямо в чате, используя данные из контекста.
+
+КОНТЕКСТ ИЗ БАЗЫ ЗНАНИЙ (используй это для ответа):
+{context}
+"""
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.post(
+                f"{ollama_url}/api/generate",
+                json={
+                    "model": "qwen2.5:latest",
+                    "prompt": f"{system_instruction}\n\nВОПРОС ПОЛЬЗОВАТЕЛЯ: {prompt}\n\nОТВЕТ НА РУССКОМ ЯЗЫКЕ:",
+                    "stream": False
+                }
+            )
+
+            if response.status_code == 200:
+                return response.json().get("response", "Ошибка: ИИ не вернул текст")
+            return f"Ошибка Ollama: {response.status_code}"
+    except Exception as e:
+        return f"Ошибка связи с ИИ-сервером: {str(e)}"
+
 # --- Endpoints ---
 
 @app.get("/users/all", response_model=List[schemas.User])
@@ -290,7 +319,7 @@ async def list_roles(db: Session = Depends(get_db), current_user: models.User = 
 async def create_user(user_data: schemas.UserCreate, db: Session = Depends(get_db), admin: models.User = Depends(get_admin_user)):
     if db.query(models.User).filter(models.User.username == user_data.username).first():
         raise HTTPException(status_code=400, detail="Username already registered")
-    
+
     hashed_pwd = auth.get_password_hash(user_data.password)
     db_user = models.User(
         username=user_data.username,
@@ -349,7 +378,7 @@ async def create_from_template(data: schemas.DocumentCreateRequest, db: Session 
         author_id=user.id,
         is_template=False
     )
-    # Статус по умолчанию ставится в модели, но мы можем уточнить
+    # Статус по умолчанию ставится в модели
     new_doc.status = "draft"
     db.flush()
 
@@ -464,8 +493,8 @@ async def chat_ask(req: schemas.ChatAskRequest, db: Session = Depends(get_db), u
     # Тут ИИ
     context_text = "\n\n".join([f"Документ '{r['title']}':\n{r['content']}" for r in context_results])
 
-    # 4. Пока LLM нет возвращаем заглушку
-    ai_answer = f"Я нашел информацию в {len(sources)} документах. (LLM будет подключена на следующем этапе). \nВот что я узнал: " + (context_text[:200] + "..." if context_text else "Ничего не найдено.")
+    # Ответ Qwen
+    ai_answer = await get_ai_response(req.query, context_text)
 
     ai_msg = models.ChatMessage(session_id=session_id, role="assistant", content=ai_answer)
     db.add(ai_msg)

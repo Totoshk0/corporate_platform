@@ -111,6 +111,7 @@ class ChatSession(Base):
     user_id = Column(Integer, ForeignKey("users.id"))
     title = Column(String)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    is_deleted = Column(Boolean, default=False) # Мягкое удаление
 
     user = relationship("User")
     messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan")

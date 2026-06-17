@@ -6,6 +6,10 @@ const Chat = ({ token, API_URL, user }) => {
   const [loading, setLoading] = React.useState(false);
   const scrollRef = React.useRef(null);
 
+  const userName = user?.full_name
+    ? user.full_name.split(" ")[0]
+    : "Пользователь";
+
   React.useEffect(() => {
     fetchSessions();
   }, []);
@@ -15,8 +19,9 @@ const Chat = ({ token, API_URL, user }) => {
   }, [currentSessionId]);
 
   React.useEffect(() => {
-    if (scrollRef.current)
+    if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
   }, [messages]);
 
   const fetchSessions = async () => {
@@ -26,7 +31,7 @@ const Chat = ({ token, API_URL, user }) => {
       });
       if (res.ok) setSessions(await res.json());
     } catch (e) {
-      console.error(e);
+      console.error("Error fetching sessions", e);
     }
   };
 
@@ -37,7 +42,26 @@ const Chat = ({ token, API_URL, user }) => {
       });
       if (res.ok) setMessages(await res.json());
     } catch (e) {
-      console.error(e);
+      console.error("Error fetching history", e);
+    }
+  };
+
+  const handleDeleteSession = async (id) => {
+    if (!confirm("Удалить этот чат?")) return;
+    try {
+      const res = await fetch(`${API_URL}/chat/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        if (currentSessionId === id) {
+          setCurrentSessionId(null);
+          setMessages([]);
+        }
+        fetchSessions();
+      }
+    } catch (e) {
+      console.error("Error deleting session", e);
     }
   };
 
@@ -76,7 +100,7 @@ const Chat = ({ token, API_URL, user }) => {
         await fetchHistory(data.session_id);
       }
     } catch (e) {
-      console.error(e);
+      console.error("Error sending message", e);
     } finally {
       setLoading(false);
     }
@@ -102,16 +126,31 @@ const Chat = ({ token, API_URL, user }) => {
         </div>
         <div className="flex-grow overflow-y-auto p-3 space-y-1">
           {sessions.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => setCurrentSessionId(s.id)}
-              className={`w-full text-left p-3 rounded-xl transition ${currentSessionId === s.id ? "bg-indigo-50 border-indigo-100 text-indigo-700" : "text-slate-500 hover:bg-slate-50"}`}
-            >
-              <p className="text-sm font-bold truncate">{s.title}</p>
-              <p className="text-[10px] uppercase font-medium opacity-50 mt-1">
-                {new Date(s.created_at).toLocaleDateString()}
-              </p>
-            </button>
+            <div key={s.id} className="relative group">
+              <button
+                onClick={() => setCurrentSessionId(s.id)}
+                className={`w-full text-left p-3 pr-10 rounded-xl transition ${
+                  currentSessionId === s.id
+                    ? "bg-indigo-50 border-indigo-100 text-indigo-700"
+                    : "text-slate-500 hover:bg-slate-50"
+                }`}
+              >
+                <p className="text-sm font-bold truncate">{s.title}</p>
+                <p className="text-[10px] uppercase font-medium opacity-50 mt-1">
+                  {new Date(s.created_at).toLocaleDateString()}
+                </p>
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeleteSession(s.id);
+                }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition"
+                title="Удалить чат"
+              >
+                <i className="fas fa-trash-alt text-xs"></i>
+              </button>
+            </div>
           ))}
         </div>
       </div>
@@ -130,7 +169,7 @@ const Chat = ({ token, API_URL, user }) => {
               </div>
               <div>
                 <h3 className="text-xl font-bold text-slate-800">
-                  Привет, {user?.full_name?.split(" ")[0]}!
+                  Привет, {userName}!
                 </h3>
                 <p className="text-slate-500 max-w-xs mx-auto">
                   Я помогу найти ответ в базе знаний или составить черновик
@@ -143,20 +182,32 @@ const Chat = ({ token, API_URL, user }) => {
           {messages.map((m, idx) => (
             <div
               key={idx}
-              className={`flex ${m.role === "user" ? "justify-end" : "justify-start"} animate-in fade-in slide-in-from-bottom-2 duration-300`}
+              className={`flex ${
+                m.role === "user" ? "justify-end" : "justify-start"
+              } animate-in fade-in slide-in-from-bottom-2 duration-300`}
             >
               <div
-                className={`max-w-[80%] flex gap-4 ${m.role === "user" ? "flex-row-reverse" : ""}`}
+                className={`max-w-[80%] flex gap-4 ${
+                  m.role === "user" ? "flex-row-reverse" : ""
+                }`}
               >
                 <div
-                  className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-sm ${m.role === "user" ? "bg-indigo-600 text-white" : "bg-slate-100 text-indigo-600"}`}
+                  className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-sm ${
+                    m.role === "user"
+                      ? "bg-indigo-600 text-white"
+                      : "bg-slate-100 text-indigo-600"
+                  }`}
                 >
                   <i
                     className={`fas ${m.role === "user" ? "fa-user" : "fa-robot"}`}
                   ></i>
                 </div>
                 <div
-                  className={`p-5 rounded-3xl text-sm leading-relaxed ${m.role === "user" ? "bg-indigo-600 text-white rounded-tr-none shadow-lg shadow-indigo-100" : "bg-slate-50 text-slate-700 rounded-tl-none border border-slate-100"}`}
+                  className={`p-5 rounded-3xl text-sm leading-relaxed ${
+                    m.role === "user"
+                      ? "bg-indigo-600 text-white rounded-tr-none shadow-lg shadow-indigo-100"
+                      : "bg-slate-50 text-slate-700 rounded-tl-none border border-slate-100"
+                  }`}
                 >
                   {m.content}
                 </div>

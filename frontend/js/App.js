@@ -7,10 +7,14 @@ const App = () => {
 
   const getInitialState = () => {
     const hash = window.location.hash.replace("#", "");
-    const [view, id] = hash.split("/");
+    const parts = hash.split("/");
+    const view = parts[0];
+    const id = parts[1] || null;
+    const validViews = ["home", "documents", "chat", "admin"];
+    
     return {
-      view: ["home", "documents", "chat"].includes(view) ? view : "home",
-      id: id || null,
+      view: validViews.includes(view) ? view : "home",
+      id: id,
     };
   };
 
@@ -79,7 +83,12 @@ const App = () => {
             initialId={route.id}
           />
         )}
-        {route.view === "chat" && <Chat token={token} API_URL={API_URL} user={user} />}
+        {route.view === "chat" && (
+          <Chat token={token} API_URL={API_URL} user={user} />
+        )}
+        {route.view === "admin" && (
+          <AdminPanel token={token} API_URL={API_URL} user={user} />
+        )}
       </main>
     </div>
   );

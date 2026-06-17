@@ -303,6 +303,63 @@ async def get_ai_response(prompt: str, context: str):
 
 # --- Endpoints ---
 
+# --- Admin ---
+
+@app.get("/admin/chats", response_model=List[schemas.ChatSessionSchema])
+async def admin_get_all_chats(db: Session = Depends(get_db), admin: models.User = Depends(get_admin_user)):
+    # Админ видит чаты пользователей
+    return db.query(models.ChatSession).order_by(models.ChatSession.created_at.desc()).all()
+
+@app.get("/admin/chats/{session_id}", response_model=List[schemas.ChatMessageSchema])
+async def admin_get_chat_details(session_id: int, db: Session = Depends(get_db), admin: models.User = Depends(get_admin_user)):
+    return db.query(models.ChatMessage).filter(models.ChatMessage.session_id == session_id).order_by(models.ChatMessage.timestamp.asc()).all()
+
+@app.delete("/admin/users/{user_id}")
+async def admin_delete_user(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(get_admin_user)):
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user: raise HTTPException(status_code=404, detail="User not found")
+    if user.system_role == models.UserRole.ADMIN: raise HTTPException(status_code=403, detail="Cannot delete admin")
+    db.delete(user)
+    db.commit()
+    return {"status": "deleted"}
+
+@app.put("/admin/users/{user_id}", response_model=schemas.User)
+async def admin_update_user(user_id: int, user_data: schemas.UserUpdate, db: Session = Depends(get_db), admin: models.User = Depends(get_admin_user)):
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user: raise HTTPException(status_code=404, detail="User not found")
+
+    if user_data.username and user_data.username != user.username:
+        if db.query(models.User).filter(models.User.username == user_data.username).first():
+            raise HTTPException(status_code=400, detail="Username already taken")
+
+    if user_data.full_name: user.full_name = user_data.full_name
+    if user_data.username: user.username = user_data.username
+    if user_data.email: user.email = user_data.email
+    if user_data.system_role: user.system_role = user_data.system_role
+    if user_data.department_id is not None: user.department_id = user_data.department_id
+    if user_data.role_id is not None: user.role_id = user_data.role_id
+
+    if user_data.password and len(user_data.password) > 0:
+        user.hashed_password = auth.get_password_hash(user_data.password)
+
+    db.commit()
+    db.refresh(user)
+    return user
+
+@app.post("/tech/generate_otp")
+async def tech_generate_otp(target_user_id: int, target_dept_id: int, db: Session = Depends(get_db), tech: models.User = Depends(get_tech_spec)):
+    import secrets
+    otp = secrets.token_hex(4)
+    access = models.TemporaryAccess(
+        user_id=target_user_id,
+        target_department_id=target_dept_id,
+        access_password=otp,
+        expires_at=datetime.utcnow() + timedelta(hours=24)
+    )
+    db.add(access)
+    db.commit()
+    return {"otp": otp, "expires_in": "24 hours"}
+
 @app.get("/users/all", response_model=List[schemas.User])
 async def list_users(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     return db.query(models.User).all()
@@ -371,7 +428,7 @@ async def create_from_template(data: schemas.DocumentCreateRequest, db: Session 
     # Используем upsert_document для создания индексированного документа
     new_doc = upsert_document(
         db=db,
-        title=f"Драфт: {template.title}",
+        title=f"Шаблон: {template.title}",
         content=template.content,
         dept_id=template.department_id,
         doc_type=template.doc_type,
@@ -457,7 +514,18 @@ async def sign_document(id: int, db: Session = Depends(get_db), user: models.Use
 
 @app.get("/chat/sessions", response_model=List[schemas.ChatSessionSchema])
 async def list_chat_sessions(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
-    return db.query(models.ChatSession).filter(models.ChatSession.user_id == user.id).order_by(models.ChatSession.created_at.desc()).all()
+    return db.query(models.ChatSession).filter(
+        models.ChatSession.user_id == user.id,
+        models.ChatSession.is_deleted == False
+    ).order_by(models.ChatSession.created_at.desc()).all()
+
+@app.delete("/chat/{session_id}")
+async def delete_chat_session(session_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    session = db.query(models.ChatSession).filter(models.ChatSession.id == session_id, models.ChatSession.user_id == user.id).first()
+    if not session: raise HTTPException(status_code=404, detail="Session not found")
+    session.is_deleted = True
+    db.commit()
+    return {"status": "deleted"}
 
 @app.get("/chat/{session_id}/history", response_model=List[schemas.ChatMessageSchema])
 async def get_chat_history(session_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):

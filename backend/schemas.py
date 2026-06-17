@@ -26,6 +26,15 @@ class UserCreate(UserBase):
     department_id: Optional[int] = None
     role_id: Optional[int] = None
 
+class UserUpdate(BaseModel):
+    full_name: Optional[str] = None
+    username: Optional[str] = None
+    email: Optional[str] = None
+    password: Optional[str] = None # Если пустой - не меняем
+    system_role: Optional[str] = None
+    department_id: Optional[int] = None
+    role_id: Optional[int] = None
+
 class User(UserBase):
     id: int
     system_role: str
@@ -104,8 +113,10 @@ class ChatSessionSchema(BaseModel):
     id: int
     title: str
     created_at: datetime
+    is_deleted: bool = False
     class Config:
         from_attributes = True
+    user_id: Optional[int] = None # Для админки
 
 class ChatAskRequest(BaseModel):
     query: str

@@ -4,6 +4,7 @@ const Documents = ({ token, API_URL, user, initialId }) => {
   const [docDetails, setDocDetails] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [searchQuery, setSearchQuery] = React.useState("");
+  const [activeQuery, setActiveQuery] = React.useState("");
 
   // Состояния для модального окна
   const [isModalOpen, setIsModalOpen] = React.useState(false);
@@ -34,6 +35,7 @@ const Documents = ({ token, API_URL, user, initialId }) => {
 
   const fetchDocs = async (query, shouldSelectInitial = false) => {
     setLoading(true);
+    setActiveQuery(query);
     try {
       const res = await fetch(`${API_URL}/kb/search`, {
         method: "POST",
@@ -239,7 +241,7 @@ const Documents = ({ token, API_URL, user, initialId }) => {
                     <span className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded uppercase font-bold tracking-tighter">
                       {doc.payload?.metadata?.doc_type || "Документ"}
                     </span>
-                    {doc.score && (
+                    {activeQuery && doc.score && (
                       <span className="text-[10px] text-indigo-500 font-extrabold uppercase">
                         {(doc.score * 100).toFixed(0)}%
                       </span>
@@ -249,6 +251,11 @@ const Documents = ({ token, API_URL, user, initialId }) => {
               </button>
             ))
           )}
+        </div>
+        <div className="p-2 border-t border-slate-100 bg-slate-50 text-center shrink-0">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+            Всего: {docs.length}
+          </span>
         </div>
       </div>
 
@@ -263,10 +270,14 @@ const Documents = ({ token, API_URL, user, initialId }) => {
                 </h2>
                 <p className="text-xs text-slate-400 mt-3 flex items-center gap-2 font-medium">
                   <i className="far fa-calendar"></i>{" "}
-                  {selectedDoc.payload?.metadata?.date || "08.06.2026"}
+                  {selectedDoc.payload?.metadata?.date ||
+                    new Date(
+                      selectedDoc.created_at || Date.now(),
+                    ).toLocaleDateString()}
                   <span className="opacity-30">|</span>
                   <i className="far fa-user"></i>{" "}
-                  {selectedDoc.payload?.metadata?.author_mention ||
+                  {selectedDoc.author?.full_name ||
+                    selectedDoc.payload?.metadata?.author_mention ||
                     "Автор не указан"}
                 </p>
               </div>
@@ -278,103 +289,105 @@ const Documents = ({ token, API_URL, user, initialId }) => {
               {selectedDoc.content}
             </div>
 
-            {docDetails && (
-              <div className="mt-12 pt-10 border-t border-slate-100">
-                <div className="flex items-center justify-between mb-6">
-                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                    Маршрут согласования
-                  </h4>
-                  <span
-                    className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-tighter ${docDetails.status === "signed" ? "bg-green-100 text-green-600" : "bg-amber-100 text-amber-600"}`}
-                  >
-                    {docDetails.status === "signed"
-                      ? "Документ подписан"
-                      : "В процессе согласования"}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {docDetails.signatories.map((s) => (
-                    <div
-                      key={s.user_id}
-                      className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100"
+            {docDetails &&
+              (docDetails.signatories?.length > 0 ||
+                docDetails.distributions?.length > 0) && (
+                <div className="mt-12 pt-10 border-t border-slate-100">
+                  <div className="flex items-center justify-between mb-6">
+                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                      Маршрут согласования
+                    </h4>
+                    <span
+                      className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-tighter ${docDetails.status === "signed" ? "bg-green-100 text-green-600" : "bg-amber-100 text-amber-600"}`}
                     >
-                      <div className="flex items-center gap-3">
-                        <div
-                          className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${s.is_signed ? "bg-green-500 text-white" : "bg-slate-200 text-slate-500"}`}
-                        >
-                          {s.is_signed ? (
-                            <i className="fas fa-check"></i>
-                          ) : (
-                            s.full_name[0]
-                          )}
-                        </div>
-                        <div>
-                          <p className="text-sm font-bold text-slate-700 leading-none">
-                            {s.full_name}
-                          </p>
-                          <p className="text-[10px] text-slate-400 mt-1">
-                            {s.is_signed
-                              ? `Подписано: ${new Date(s.signed_at).toLocaleDateString()}`
-                              : "Ожидает подписи"}
-                          </p>
+                      {docDetails.status === "signed"
+                        ? "Документ подписан"
+                        : "В процессе согласования"}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {docDetails.signatories.map((s) => (
+                      <div
+                        key={s.user_id}
+                        className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${s.is_signed ? "bg-green-500 text-white" : "bg-slate-200 text-slate-500"}`}
+                          >
+                            {s.is_signed ? (
+                              <i className="fas fa-check"></i>
+                            ) : (
+                              s.full_name[0]
+                            )}
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-slate-700 leading-none">
+                              {s.full_name}
+                            </p>
+                            <p className="text-[10px] text-slate-400 mt-1">
+                              {s.is_signed
+                                ? `Подписано: ${new Date(s.signed_at).toLocaleDateString()}`
+                                : "Ожидает подписи"}
+                            </p>
+                          </div>
                         </div>
                       </div>
+                    ))}
+                  </div>
+
+                  {/* Рассылка по отделам */}
+                  {docDetails.distributions.filter((d) => d.department_id)
+                    .length > 0 && (
+                    <div className="mt-8">
+                      <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 ml-1">
+                        Копии направлены в отделы
+                      </h4>
+                      <div className="flex flex-wrap gap-2">
+                        {docDetails.distributions
+                          .filter((d) => d.department_id)
+                          .map((d, idx) => (
+                            <span
+                              key={idx}
+                              className="px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl border border-indigo-100 text-xs font-bold flex items-center gap-2"
+                            >
+                              <i className="fas fa-broadcast-tower text-[10px] opacity-50"></i>
+                              {d.department_name ||
+                                `Отдел ID: ${d.department_id}`}
+                            </span>
+                          ))}
+                      </div>
                     </div>
-                  ))}
+                  )}
+
+                  {docDetails.signatories.find(
+                    (s) => s.user_id === user?.id && !s.is_signed,
+                  ) && (
+                    <div className="mt-8 p-6 bg-indigo-50 rounded-3xl border border-indigo-100 flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-bold text-indigo-900">
+                          Ваша подпись обязательна
+                        </p>
+                        <p className="text-xs text-indigo-600 mt-1">
+                          Ознакомьтесь с документом перед подтверждением
+                        </p>
+                      </div>
+                      <button
+                        onClick={handleSign}
+                        disabled={signing}
+                        className="px-8 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg hover:bg-indigo-700 transition flex items-center gap-2"
+                      >
+                        {signing ? (
+                          <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                        ) : (
+                          "Подписать"
+                        )}
+                      </button>
+                    </div>
+                  )}
                 </div>
-
-                {/* Рассылка по отделам */}
-                {docDetails.distributions.filter((d) => d.department_id)
-                  .length > 0 && (
-                  <div className="mt-8">
-                    <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 ml-1">
-                      Копии направлены в отделы
-                    </h4>
-                    <div className="flex flex-wrap gap-2">
-                      {docDetails.distributions
-                        .filter((d) => d.department_id)
-                        .map((d, idx) => (
-                          <span
-                            key={idx}
-                            className="px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl border border-indigo-100 text-xs font-bold flex items-center gap-2"
-                          >
-                            <i className="fas fa-broadcast-tower text-[10px] opacity-50"></i>
-                            {d.department_name ||
-                              `Отдел ID: ${d.department_id}`}
-                          </span>
-                        ))}
-                    </div>
-                  </div>
-                )}
-
-                {docDetails.signatories.find(
-                  (s) => s.user_id === user?.id && !s.is_signed,
-                ) && (
-                  <div className="mt-8 p-6 bg-indigo-50 rounded-3xl border border-indigo-100 flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-bold text-indigo-900">
-                        Ваша подпись обязательна
-                      </p>
-                      <p className="text-xs text-indigo-600 mt-1">
-                        Ознакомьтесь с документом перед подтверждением
-                      </p>
-                    </div>
-                    <button
-                      onClick={handleSign}
-                      disabled={signing}
-                      className="px-8 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg hover:bg-indigo-700 transition flex items-center gap-2"
-                    >
-                      {signing ? (
-                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                      ) : (
-                        "Подписать"
-                      )}
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
+              )}
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center text-slate-300">
